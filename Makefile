@@ -73,8 +73,40 @@ XSVFTOOL_OBJS = \
 	xsvfplay_ftd2xx$(OBJEXT) \
 	$(LIBXSVF_OBJS)
 
+# DirtyJTAG object files (Windows nmake target uses libusb-1.0)
+DIRTYJTAG_OBJS = \
+	xsvfplay_dirtyjtag$(OBJEXT) \
+	$(LIBXSVF_OBJS)
+
+# libusb-1.0 paths - using local VS2022 folder (MS32 for x86, MS64 for x64)
+LIBUSB_DIR = VS2022
+LIBUSB_INCLUDE = include
+!IF "$(ARCH)" == "x86"
+LIBUSB_ARCH = MS32
+!ELSE
+LIBUSB_ARCH = MS64
+!ENDIF
+
+# Libraries for DirtyJTAG build (requires libusb-1.0)
+!IFDEF USE_MINGW
+DIRTYJTAG_LIBS = -L$(LIBUSB_DIR)\$(LIBUSB_ARCH)\dll -lusb-1.0
+!ELSE
+DIRTYJTAG_LIBS = $(LIBUSB_DIR)\$(LIBUSB_ARCH)\dll\libusb-1.0.lib
+!ENDIF
+
+LIBUSB_INCLUDES = /I$(LIBUSB_INCLUDE)
+
+# Combined single-exe object files
+COMBINED_OBJS = \
+	xsvftool$(OBJEXT) \
+	$(LIBXSVF_OBJS)
+
 # Targets
-all: check-ftdilib xsvftool-ftd2xx$(EXEEXT)
+# 'all' builds the combined tool + both standalone tools
+all: check-ftdilib xsvftool$(EXEEXT) xsvftool-ftd2xx$(EXEEXT) xsvftool-dirtyjtag$(EXEEXT)
+
+# Build only the combined tool (requires both ftdilib and libusb)
+combined: check-ftdilib xsvftool$(EXEEXT)
 
 check-ftdilib:
 !IF !EXIST(ftdilib\ftd2xx.h)
@@ -90,7 +122,24 @@ xsvftool-ftd2xx$(EXEEXT): $(XSVFTOOL_OBJS)
 	$(CC) $(CFLAGS) $(XSVFTOOL_OBJS) /Fe$@ $(LDFLAGS) $(LIBS)
 !ENDIF
 
-# Compilation rules
+xsvftool-dirtyjtag$(EXEEXT): $(DIRTYJTAG_OBJS)
+!IFDEF USE_MINGW
+	$(CC) $(CFLAGS) -o $@ $(DIRTYJTAG_OBJS) $(DIRTYJTAG_LIBS)
+!ELSE
+	$(CC) $(CFLAGS) $(DIRTYJTAG_OBJS) /Fe$@ $(LDFLAGS) $(DIRTYJTAG_LIBS)
+!ENDIF
+
+xsvftool$(EXEEXT): $(COMBINED_OBJS)
+!IFDEF USE_MINGW
+	$(CC) $(CFLAGS) -o $@ $(COMBINED_OBJS) $(LIBS) $(DIRTYJTAG_LIBS)
+!ELSE
+	$(CC) $(CFLAGS) $(COMBINED_OBJS) /Fe$@ $(LDFLAGS) $(LIBS) $(DIRTYJTAG_LIBS)
+!ENDIF
+
+# Build only the DirtyJTAG standalone tool (no ftdilib required)
+dirtyjtag: xsvftool-dirtyjtag$(EXEEXT)
+
+# Compilation rules (inference rules for shared libxsvf sources)
 !IFDEF USE_MINGW
 .c$(OBJEXT):
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
@@ -99,8 +148,30 @@ xsvftool-ftd2xx$(EXEEXT): $(XSVFTOOL_OBJS)
 	$(CC) $(CFLAGS) $(INCLUDES) /c $< /Fo$@
 !ENDIF
 
-# Dependencies
+# Explicit rules for the two main files so their unique flags are always applied.
+# The DirtyJTAG file needs -DDIRTYJTAG_STANDALONE to emit main(); this cannot
+# be left to the generic inference rule which has no way to add per-file flags.
+!IFDEF USE_MINGW
 xsvfplay_ftd2xx$(OBJEXT): xsvfplay_ftd2xx.c libxsvf.h
+	$(CC) $(CFLAGS) $(INCLUDES) -c xsvfplay_ftd2xx.c -o xsvfplay_ftd2xx$(OBJEXT)
+
+xsvfplay_dirtyjtag$(OBJEXT): xsvfplay_dirtyjtag.c libxsvf.h
+	$(CC) $(CFLAGS) -I. $(LIBUSB_INCLUDES) -DDIRTYJTAG_STANDALONE -c xsvfplay_dirtyjtag.c -o xsvfplay_dirtyjtag$(OBJEXT)
+
+xsvftool$(OBJEXT): xsvftool.c xsvfplay_ftd2xx.c xsvfplay_dirtyjtag.c libxsvf.h
+	$(CC) $(CFLAGS) $(INCLUDES) $(LIBUSB_INCLUDES) -DCOMBINED_BUILD -c xsvftool.c -o xsvftool$(OBJEXT)
+!ELSE
+xsvfplay_ftd2xx$(OBJEXT): xsvfplay_ftd2xx.c libxsvf.h
+	$(CC) $(CFLAGS) $(INCLUDES) /c xsvfplay_ftd2xx.c /Foxsvfplay_ftd2xx$(OBJEXT)
+
+xsvfplay_dirtyjtag$(OBJEXT): xsvfplay_dirtyjtag.c libxsvf.h
+	$(CC) $(CFLAGS) /I. $(LIBUSB_INCLUDES) /DDIRTYJTAG_STANDALONE /c xsvfplay_dirtyjtag.c /Foxsvfplay_dirtyjtag$(OBJEXT)
+
+xsvftool$(OBJEXT): xsvftool.c xsvfplay_ftd2xx.c xsvfplay_dirtyjtag.c libxsvf.h
+	$(CC) $(CFLAGS) $(INCLUDES) $(LIBUSB_INCLUDES) /DCOMBINED_BUILD /c xsvftool.c /Foxsvftool$(OBJEXT)
+!ENDIF
+
+# Dependencies for shared libxsvf sources
 memname$(OBJEXT): memname.c libxsvf.h
 play$(OBJEXT): play.c libxsvf.h
 scan$(OBJEXT): scan.c libxsvf.h
@@ -111,11 +182,10 @@ xsvf$(OBJEXT): xsvf.c libxsvf.h
 
 # Clean
 clean:
-	-$(RM) *.obj *.o xsvftool-ftd2xx.exe
+	-$(RM) *.obj *.o xsvftool-ftd2xx.exe xsvftool-dirtyjtag.exe xsvftool.exe
 
 # Install target (optional)
 install:
-	@echo Copy xsvftool-ftd2xx.exe to your desired location
-	@echo Don't forget to have ftd2xx.dll in your PATH or in the same directory
-
-.PHONY: all clean install check-ftdilib
+	@echo Copy xsvftool-ftd2xx.exe and xsvftool-dirtyjtag.exe to your desired location
+	@echo For FTDI: ensure ftd2xx.dll is in the same directory or on PATH
+	@echo For DirtyJTAG: ensure libusb-1.0.dll is in the same directory or on PATH

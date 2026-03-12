@@ -730,6 +730,8 @@ static struct libxsvf_host h = {
 	.user_data = &u
 };
 
+#ifndef COMBINED_BUILD
+
 const char *progname;
 
 static void help()
@@ -948,3 +950,5 @@ int main(int argc, char **argv)
 
 	return rc;
 }
+
+#endif /* COMBINED_BUILD */

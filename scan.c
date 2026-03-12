@@ -38,6 +38,14 @@ int libxsvf_scan(struct libxsvf_host *h)
 			return -1;
 
 		if (bit == 0) {
+			/* First bit is 0 — this is a BYPASS register, not an idcode.
+			 * Shift out the remaining 31 bits and discard them, then report
+			 * device with idcode 0. */
+			for (j=1; j<32; j++) {
+				int bit = LIBXSVF_HOST_PULSE_TCK(0, 1, -1, 0, 1);
+				if (bit < 0)
+					return -1;
+			}
 			LIBXSVF_HOST_REPORT_DEVICE(0);
 		} else {
 			unsigned long idcode = 1;
@@ -47,7 +55,9 @@ int libxsvf_scan(struct libxsvf_host *h)
 					return -1;
 				idcode |= ((unsigned long)bit) << j;
 			}
-			if (idcode == 0xffffffff)
+			/* 0xffffffff = TDO pulled high = end of chain */
+			/* 0x00000001 = TDO stuck low, only the TDI 1 we sent came back */
+			if (idcode == 0xffffffff || idcode == 0x00000001)
 				break;
 			LIBXSVF_HOST_REPORT_DEVICE(idcode);
 		}
@@ -55,4 +65,3 @@ int libxsvf_scan(struct libxsvf_host *h)
 
 	return 0;
 }
-
