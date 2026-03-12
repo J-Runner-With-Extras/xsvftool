@@ -471,17 +471,30 @@ int libxsvf_svf(struct libxsvf_host *h)
 					number = number*10 + (*p - '0');
 					p++;
 				}
+				/* Handle decimal point (e.g. 0.100000 SEC) */
+				int frac_digits = 0;
+				if (*p == '.') {
+					p++;
+					while (*p >= '0' && *p <= '9') {
+						number = number*10 + (*p - '0');
+						frac_digits++;
+						p++;
+					}
+				}
 				if(*p == 'E' || *p == 'e') {
 					p++;
 					if(*p == '-') {
 						expsign = -1;
 						p++;
 					}
+					if(*p == '+') {
+						p++;
+					}
 					while (*p >= '0' && *p <= '9') {
 						exp = exp*10 + (*p - '0');
 						p++;
 					}
-					exp = exp * expsign;
+					exp = exp * expsign - frac_digits;
 					number_e6 = number;
 					exp_e6 = exp + 6;
 					while (exp < 0) {
@@ -501,7 +514,11 @@ int libxsvf_svf(struct libxsvf_host *h)
 						exp_e6--;
 					}
 				} else {
-					number_e6 = number * 1000000;
+					/* Convert to microseconds: number * 10^(6 - frac_digits) */
+					number_e6 = number;
+					int e6 = 6 - frac_digits;
+					while (e6 > 0) { number_e6 *= 10; e6--; }
+					while (e6 < 0) { number_e6 /= 10; e6++; }
 				}
 				while (*p == ' ') {
 					p++;
