@@ -4,22 +4,28 @@ echo.
 echo IMPORTANT: You need the FTDI libraries in ftdilib\amd64\
 echo.
 
-REM Try to find Visual Studio x64 tools
-if exist "%ProgramFiles%\Microsoft Visual Studio\2022\*" (
-    for /d %%i in ("%ProgramFiles%\Microsoft Visual Studio\2022\*") do (
+REM Check if cl.exe is already available (e.g., running from a dev prompt)
+where cl >nul 2>nul
+if %errorlevel%==0 goto :build
+
+REM Try vswhere first (most reliable method)
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if exist "%VSWHERE%" (
+    for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -property installationPath`) do (
         if exist "%%i\Common7\Tools\VsDevCmd.bat" (
+            echo Found Visual Studio at %%i
             call "%%i\Common7\Tools\VsDevCmd.bat" -arch=x64
             goto :build
         )
     )
 )
 
-if exist "%ProgramFiles%\Microsoft Visual Studio\2019\*" (
-    for /d %%i in ("%ProgramFiles%\Microsoft Visual Studio\2019\*") do (
-        if exist "%%i\Common7\Tools\VsDevCmd.bat" (
-            call "%%i\Common7\Tools\VsDevCmd.bat" -arch=x64
-            goto :build
-        )
+REM Fallback: search both Program Files locations
+for %%p in ("%ProgramFiles%" "%ProgramFiles(x86)%") do (
+    for /f "delims=" %%i in ('where /r %%p VsDevCmd.bat 2^>nul') do (
+        echo Found Visual Studio at %%i
+        call "%%i" -arch=x64
+        goto :build
     )
 )
 
