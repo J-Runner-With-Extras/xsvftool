@@ -11,8 +11,9 @@ This is a Windows port of the LibXSVF JTAG SVF/XSVF player for FTDI chips.
 
 ## Prerequisites
 
-1. **FTDI D2XX Drivers and Library**
+1. **LibUSB + FTDI D2XX Drivers and Library**
    - Download from: https://ftdichip.com/drivers/d2xx-drivers/
+   - Download from: https://github.com/libusb/libusb/releases
    - Install the CDM drivers
    - Create a `ftdilib` folder in your project directory
    - Copy these files from the CDM package into `ftdilib`:
